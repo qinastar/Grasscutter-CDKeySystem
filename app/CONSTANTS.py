@@ -22,7 +22,19 @@ MeaMail_addr = r'plugins\MeaMailPlus\template'
 # 邮件默认过期时间戳（默认为邮件发送时间+30天）
 Mail_default_expire_time = int((datetime.datetime.now() + datetime.timedelta(days=30)).timestamp())
 
-# 设置使用Crepe-Inc-YSGM
+# 设置CDK默认过期时间（默认为90天）
+CDK_expire_day = 90
+
+# 设置网页背景图链接，默认是/static/images/bg.jpg文件
+# 也可以设置一些随机图的地址 比如https://api.mtyqx.cn/tapi/random.php
+# 更多随机图地址详见我博客https://blog.jixiaob.cn/?post=93
+background_image = './usr/theme/images/bg.jpg'
+
+# 设置获取在线人数的缓存时间秒数，时间过短可能导致所有页面加载缓慢和大量的服务器查询人数请求
+# 默认为1分钟
+online_cache_time = 60
+
+# 设置使用Crepe-Inc-YSGM（MUIP方法）
 YSGM = {
     # 启用状态。若未启用则使用open-command
     'enable': False,
@@ -187,7 +199,15 @@ def initialize():
         return True
 
 
+# 获取在线人数的缓存，加速短时间内获取在线人数的速度，减少请求服务器的速度
+online_cache = (datetime.datetime.now(), 0)
+
+
 def get_online():
+    global online_cache
+    if datetime.datetime.now() - online_cache[0] < datetime.timedelta(seconds=online_cache_time):
+        return online_cache[1], None
+
     if YSGM['enable']:
         params = YSGM_api(1101)
         req_url = YSGM['MUIP_HOST']
@@ -199,6 +219,8 @@ def get_online():
                 # {'gameserver_player_num': {'809.2.1.1': 0}, 'internal_data': 0, 'online_player_num_except_sub_account': 0}
                 # 暂时用这个人数看看对不对
                 total_num = result['data']['online_player_num_except_sub_account']
+                # 更新缓存
+                online_cache = (datetime.datetime.now(), total_num)
                 return total_num, None
             else:
                 return 0, 'Error'
@@ -208,6 +230,8 @@ def get_online():
     req_url = f'{Server_addr}/status/server'
     try:
         res_online = requests.get(req_url, verify=False).json()['status']['playerCount']
+        # 更新缓存
+        online_cache = (datetime.datetime.now(), res_online)
         return res_online, None
     except:
         return 0, 'Error'
@@ -247,6 +271,13 @@ def exec_command(command, uid=None):
     # 所以如果生成cdk的时候用的命令是gc的，执行的时候一定不要改成GM的！
     command = command[1:] if command.startswith('/') or command.startswith('!') else command
     if YSGM['enable']:
+
+        # 如果填写了uid，判断uid是否为纯数字（官端应该只有纯数字uid）
+        # 防止兑换cdk的时候uid加字母卡多次兑换bug
+        if uid:
+            if not uid.isdigit():
+                return False, {'data': 'uid不是纯数字！'}
+
         params = YSGM_api(1116, uid=uid, msg=command)
         req_url = YSGM['MUIP_HOST']
         try:
